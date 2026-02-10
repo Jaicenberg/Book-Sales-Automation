@@ -1,0 +1,13 @@
+# Install with: pip install -r requirements.txt -v  (use -v to see progress and avoid "frozen" installs)
+google-api-python-client==2.114.0
+google-auth==2.27.0
+google-auth-oauthlib==1.2.0
+google-cloud-pubsub==2.19.0
+anthropic==0.42.0
+playwright>=1.48.0
+flask==3.0.0
+python-dotenv==1.0.0
+gspread==6.0.0
+pyotp==2.9.0
+schedule==1.2.1
+gunicorn==21.2.0

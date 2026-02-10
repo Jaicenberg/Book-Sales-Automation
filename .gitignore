@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+state.json
+browser_data/
+screenshots/
+*.db
+venv/
+.DS_Store
+service-account.json
+book-sales-automation-*.json
