@@ -14,7 +14,7 @@ GCP_SERVICE_ACCOUNT_KEY_PATH = os.environ.get("GCP_SERVICE_ACCOUNT_KEY_PATH", ""
 GMAIL_USER_EMAIL = os.environ.get("GMAIL_USER_EMAIL", "")
 PUBSUB_TOPIC = os.getenv("PUBSUB_TOPIC", "gmail-book-orders")
 PUBSUB_SUBSCRIPTION = os.getenv("PUBSUB_SUBSCRIPTION", "gmail-book-orders-sub")
-GMAIL_LABEL_NAME = os.getenv("GMAIL_LABEL_NAME", "book sales")
+GMAIL_LABEL_NAME = os.getenv("GMAIL_LABEL_NAME", "Book Sales")
 
 # --- Claude API ---
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
