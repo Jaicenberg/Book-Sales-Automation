@@ -2,7 +2,7 @@
 """Book Sending Automation — Main entry point.
 
 Starts:
-1. Pub/Sub listener (pulls Gmail notifications, processes orders)
+1. Pub/Sub listener (pulls Gmail notifications for "book sales" label, processes orders)
 2. Gmail watch renewal (every 24h)
 3. Flask dashboard (on a separate thread)
 """
@@ -12,20 +12,20 @@ import time
 
 import schedule
 
-from config.settings import GMAIL_USER_EMAIL, validate_settings
+from config.settings import GMAIL_LABEL_NAME, GMAIL_USER_EMAIL, validate_settings
 from dashboard.app import start_dashboard
-from services.gmail_service import get_gmail_service, start_watch_inbox
-from services.order_service import process_book_sale, process_inbox_message
+from services.gmail_service import get_gmail_service, start_watch
+from services.order_service import process_book_sale
 from services.pubsub_service import start_listener
 
 logger = logging.getLogger(__name__)
 
 
 def renew_watch():
-    """Re-register Gmail Pub/Sub watch on INBOX (must be called every <7 days; we do it daily)."""
+    """Re-register Gmail Pub/Sub watch on the 'book sales' label (must be called every <7 days; we do it daily)."""
     try:
         service = get_gmail_service(GMAIL_USER_EMAIL)
-        result = start_watch_inbox(service)
+        result = start_watch(service, GMAIL_LABEL_NAME)
         logger.info("Watch renewed — historyId: %s", result.get("historyId"))
     except Exception:
         logger.exception("Failed to renew Gmail watch")
@@ -45,7 +45,7 @@ def main():
 
     logger.info("Starting Book Sending Automation")
 
-    # Register initial Gmail watch on INBOX
+    # Register initial Gmail watch on "book sales" label
     renew_watch()
 
     # Start dashboard in a background thread
@@ -59,14 +59,9 @@ def main():
     logger.info("Scheduler started (watch renewal every 24h)")
 
     # Start Pub/Sub listener (blocking — runs in main thread)
-    # Dual-routing: labeled threads go to process_book_sale,
-    # unlabeled threads go to process_inbox_message (classify first)
-    logger.info("Starting Pub/Sub listener")
-    start_listener(
-        book_sale_callback=process_book_sale,
-        inbox_callback=process_inbox_message,
-        poll_interval=5,
-    )
+    # Only fires for emails with the "book sales" label — no wasted Claude calls
+    logger.info("Starting Pub/Sub listener (watching '%s' label only)", GMAIL_LABEL_NAME)
+    start_listener(message_callback=process_book_sale, poll_interval=5)
 
 
 if __name__ == "__main__":

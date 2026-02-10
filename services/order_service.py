@@ -15,7 +15,6 @@ from config.settings import (
     NICK_EMAIL,
 )
 from services.gmail_service import (
-    apply_label_to_thread,
     get_gmail_service,
     get_message_body,
     get_message_headers,
@@ -24,46 +23,14 @@ from services.gmail_service import (
     reply_to_thread,
 )
 from services.kdp_service import order_author_copies
-from services.parser_service import classify_as_book_sale, parse_email_thread
+from services.parser_service import parse_email_thread
 from services.sheets_service import is_thread_logged, log_order
 
 logger = logging.getLogger(__name__)
 
 
-def process_inbox_message(thread_id: str, message_id: str, message: dict):
-    """Process a new INBOX message that hasn't been labeled yet.
-
-    Classifies the email as a book sale or not. If it's a book sale,
-    applies the "book sales" label and hands off to process_book_sale().
-    """
-    gmail_service = get_gmail_service(GMAIL_USER_EMAIL)
-    body = get_message_body(message)
-    headers = get_message_headers(message)
-
-    email_text = (
-        f"From: {headers.get('from', '')}\n"
-        f"To: {headers.get('to', '')}\n"
-        f"Cc: {headers.get('cc', '')}\n"
-        f"Subject: {headers.get('subject', '')}\n\n"
-        f"{body}"
-    )
-
-    if not classify_as_book_sale(email_text):
-        logger.debug("Thread %s is NOT a book sale — ignoring", thread_id)
-        return
-
-    logger.info("Thread %s classified as BOOK SALE — applying label", thread_id)
-    try:
-        apply_label_to_thread(gmail_service, thread_id)
-    except Exception:
-        logger.exception("Failed to apply label to thread %s", thread_id)
-
-    # Now process as a book sale
-    process_book_sale(thread_id, message_id, message)
-
-
 def process_book_sale(thread_id: str, message_id: str, message: dict):
-    """Process a confirmed book sale thread.
+    """Process a book sale thread (already labeled "book sales").
 
     Flow: parse -> (ask for info OR ship) -> confirm -> log to Sheets
     """

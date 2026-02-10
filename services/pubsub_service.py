@@ -14,11 +14,7 @@ from config.settings import (
     PUBSUB_SUBSCRIPTION,
     STATE_FILE,
 )
-from services.gmail_service import (
-    get_gmail_service,
-    get_inbox_history,
-    thread_has_label,
-)
+from services.gmail_service import get_gmail_service, get_history, get_label_id
 
 logger = logging.getLogger(__name__)
 
@@ -42,21 +38,23 @@ def get_subscriber_client() -> pubsub_v1.SubscriberClient:
     return pubsub_v1.SubscriberClient(credentials=credentials)
 
 
-def pull_and_process(book_sale_callback, inbox_callback):
-    """Pull messages from Pub/Sub and route new Gmail messages.
+def pull_and_process(message_callback):
+    """Pull messages from Pub/Sub and process new Gmail messages.
 
-    Dual-routing:
-    - If a thread already has the "book sales" label -> book_sale_callback (skip classification)
-    - Otherwise -> inbox_callback (classify first, then potentially process)
+    Only processes messages with the "book sales" label — no classification needed.
 
     Args:
-        book_sale_callback: function(thread_id, message_id, message) for labeled threads
-        inbox_callback: function(thread_id, message_id, message) for unlabeled threads
+        message_callback: function(thread_id, message_id, message) called for each new message
     """
     subscriber = get_subscriber_client()
     subscription_path = subscriber.subscription_path(GCP_PROJECT_ID, PUBSUB_SUBSCRIPTION)
 
     gmail_service = get_gmail_service(GMAIL_USER_EMAIL)
+    label_id = get_label_id(gmail_service, GMAIL_LABEL_NAME)
+
+    if not label_id:
+        logger.error("Gmail label '%s' not found", GMAIL_LABEL_NAME)
+        return
 
     response = subscriber.pull(
         request={"subscription": subscription_path, "max_messages": 10},
@@ -90,12 +88,12 @@ def pull_and_process(book_sale_callback, inbox_callback):
             continue
 
         try:
-            new_messages = get_inbox_history(gmail_service, last_history_id)
+            new_messages = get_history(gmail_service, last_history_id, label_id)
         except Exception:
             logger.exception("Failed to fetch Gmail history from %s", last_history_id)
             continue
 
-        logger.info("Found %d new INBOX messages since historyId %s", len(new_messages), last_history_id)
+        logger.info("Found %d new 'book sales' messages since historyId %s", len(new_messages), last_history_id)
 
         seen_threads = set()
         for msg_stub in new_messages:
@@ -113,14 +111,7 @@ def pull_and_process(book_sale_callback, inbox_callback):
                     .get(userId="me", id=msg_id, format="full")
                     .execute()
                 )
-
-                # Dual-routing: check if thread already has book sales label
-                if thread_has_label(gmail_service, thread_id, GMAIL_LABEL_NAME):
-                    logger.info("Thread %s has 'book sales' label — processing as book sale", thread_id)
-                    book_sale_callback(thread_id, msg_id, full_message)
-                else:
-                    logger.info("Thread %s is new — classifying", thread_id)
-                    inbox_callback(thread_id, msg_id, full_message)
+                message_callback(thread_id, msg_id, full_message)
             except Exception:
                 logger.exception("Failed to process message %s in thread %s", msg_id, thread_id)
 
@@ -134,20 +125,14 @@ def pull_and_process(book_sale_callback, inbox_callback):
         logger.info("Acknowledged %d Pub/Sub messages", len(ack_ids))
 
 
-def start_listener(book_sale_callback, inbox_callback, poll_interval: int = 5):
-    """Continuously poll Pub/Sub for new messages.
-
-    Args:
-        book_sale_callback: handler for threads already labeled "book sales"
-        inbox_callback: handler for new unlabeled threads (classify first)
-        poll_interval: seconds between polls
-    """
+def start_listener(message_callback, poll_interval: int = 5):
+    """Continuously poll Pub/Sub for new messages with the 'book sales' label."""
     import time
 
     logger.info("Starting Pub/Sub listener (poll interval: %ds)", poll_interval)
     while True:
         try:
-            pull_and_process(book_sale_callback, inbox_callback)
+            pull_and_process(message_callback)
         except Exception:
             logger.exception("Error in Pub/Sub pull loop")
         time.sleep(poll_interval)
